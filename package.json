@@ -1,0 +1,13 @@
+{
+  "name": "@vcsoc/pi-auto-lint",
+  "version": "0.1.0",
+  "description": "Auto-lint pi package that runs detected lint/typecheck checks after file edits.",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./extensions"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
