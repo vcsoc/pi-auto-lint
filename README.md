@@ -1,56 +1,34 @@
-# @vcsoc/pi-auto-lint
+# Auto-lint
 
-pi package for the `auto-lint` extension.
+One automatic runner, one check batch before Pi settles after edits. Requires Pi's `agent_before_settle` event (current installation: 0.87).
 
-## What it does
+## Behavior
 
-- watches successful `write` and `edit` tool results
-- debounces checks by `2500ms`
-- detects common project lint/typecheck commands from the current cwd
-- posts pass/fail results back into the session as `auto-lint` messages
-- shows a footer status: `on`, `off`, or `linting…`
+- Successful `edit`/`write` events collect nearest package/module roots within the session directory. Failed edits, vault notes and non-code prose are ignored.
+- No debounce timer and no lint per edit. Each affected root is checked once at the final agent boundary. No edits means no checks.
+- `/lint` checks pending roots or the current directory immediately and consumes the pending batch. `/lint-status` only shows results. `/lint-on` and `/lint-off` toggle automatic checks.
+- Success is status-only, not an LLM message. One bounded failure summary per batch is queued for the next user turn; no automatic retry/agent loop.
+- Unconfigured projects show a quiet `not configured` status; `/lint-status` explains what to configure. This is not a passing check.
+- Commands time out after two minutes each; stopping/reloading aborts in-flight work.
 
-## Install
+## Detection
 
-```bash
-pi install ./packages/pi-auto-lint
-```
+JS/TS/React/Next: prefer `lint:check`/`lint`, `typecheck`/`type-check`, and `format:check` scripts using npm/pnpm/yarn/bun. Otherwise use installed local ESLint or configured Biome, tsc with tsconfig.json, vue-tsc or svelte-check, and Prettier check. Stylelint is selected when installed and no lint script owns checks. React/JSX/TSX rules come from existing ESLint/Biome configuration; plugins are not installed or enabled automatically.
 
-Project-local:
+Go modules: `gofmt -l .` (output counts as failure), then configured golangci-lint or `go vet ./...`.
 
-```bash
-pi install -l ./packages/pi-auto-lint
-```
+Python: Ruff (project .venv preferred), configured Ruff formatting and mypy. Rust: cargo fmt and clippy. .NET: dotnet format for a solution or individual projects, without restore.
 
-One-off test:
+No automatic lint:fix, generic format script, or tool installation. Project scripts themselves may write files or download dependencies; review them. Go/Rust checks may fetch build dependencies. Missing tools are reported, not installed. Yarn PnP should use project scripts. Framework generated types may require setup beforehand.
 
-```bash
-pi -e ./packages/pi-auto-lint
-```
+## Limits
 
-## Commands
+No recursive scan of every monorepo package: only roots belonging to edited files are checked. Parent workspace dependencies and cross-package impact need explicit CI/project scripts. Shell/external/custom-tool edits are not watched. Manual agent checks are not automatically recognized; reuse results rather than invoking both mechanisms. Not a general filesystem watcher.
 
-```text
-/lint
-/lint-on
-/lint-off
-/lint-status
-```
+## Installation
 
-## Detected commands
+Install with `pi install git:github.com/vcsoc/pi-auto-lint`, then `/reload`. Keep only ONE loaded copy: archive any previous `~/.pi/agent/extensions/auto-lint` installation outside the extensions folder. The entry point is `extensions/auto-lint.ts`; its three `.mjs` helpers live beside it.
 
-- Node: `npm run lint`, `npm run lint:fix`, `npm run typecheck`, `npm run format`
-- Python: `ruff check .`
-- Rust: `cargo fmt --check`, `cargo clippy -- -D warnings`
-- .NET: `dotnet format --verify-no-changes`
+## Tests
 
-.NET detection is triggered when the current working directory contains `global.json`, a `.sln` file, or a `.csproj` file.
-
-## Notes
-
-- `npm run lint:fix` runs before other npm checks when present
-- .NET detection now checks for real `.sln` and `.csproj` files in the current directory instead of relying on wildcard paths
-- auto-lint only triggers after `write` and `edit`; it does not watch `bash`
-- if a lint run is already in progress, one follow-up run is queued
-- command output is truncated to the last `12000` characters
-- if no supported lint command is detected, the extension warns and does not run anything
+`npm test` from the repository root. Tests use fixtures and mock execution; they do not install or run language toolchains.

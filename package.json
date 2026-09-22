@@ -1,7 +1,8 @@
 {
   "name": "@vcsoc/pi-auto-lint",
-  "version": "0.1.0",
-  "description": "Auto-lint pi package that runs detected lint/typecheck checks after file edits.",
+  "version": "0.2.0",
+  "description": "Automatic batch lint, type and format checks for affected projects.",
+  "scripts": { "test": "node --test extensions/test/*.test.mjs" },
   "keywords": ["pi-package"],
   "license": "MIT",
   "pi": {
