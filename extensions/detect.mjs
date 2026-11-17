@@ -1,7 +1,29 @@
 import { access, readFile, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
-export async function detectCommands(cwd) {
+const TAURI_CONFIGS = ['tauri.conf.json', 'tauri.conf.json5', 'Tauri.toml'];
+
+// Missing frontendDist makes tauri::generate_context!() fail at compile time.
+async function tauriHint(dir, files) {
+  const config = TAURI_CONFIGS.find(name => files.includes(name));
+  if (!config) return undefined;
+  let text = ''; try { text = await readFile(join(dir, config), 'utf8'); } catch { return undefined; }
+  const dist = /["']?(?:frontendDist|distDir|frontend-dist|dist-dir)["']?\s*[:=]\s*["']([^"']+)["']/.exec(text)?.[1];
+  if (!dist || /^[a-z]+:\/\//i.test(dist)) return undefined;
+  try { await access(resolve(dir, dist)); return undefined; } catch {
+    return `Tauri frontendDist "${dist}" does not exist; build the frontend first (e.g. npm run build) so tauri::generate_context!() can compile.`;
+  }
+}
+
+async function rust(dir, files, add, manifest = []) {
+  let text = ''; try { text = await readFile(join(dir, 'Cargo.toml'), 'utf8'); } catch {}
+  const workspace = /^\s*\[workspace\]/m.test(text) ? ['--workspace'] : [];
+  const hint = await tauriHint(dir, files);
+  add('cargo', ['fmt', ...manifest, '--all', '--check']);
+  add('cargo', ['clippy', ...manifest, ...workspace, '--all-targets', '--', '-D', 'warnings'], hint ? { hint } : {});
+}
+
+export async function detectCommands(cwd, options = {}) {
   const files = await readdir(cwd);
   const has = (...names) => names.some(name => files.includes(name));
   let pkg = {};
@@ -46,9 +68,13 @@ export async function detectCommands(cwd) {
     if (/\[tool\.ruff\.format\]/.test(text)) add(ruff, ['format', '--check', '.']);
     if (/\[tool\.mypy(?:\]|\.)/.test(text) || has('mypy.ini', '.mypy.ini')) add('mypy', ['.']);
   }
-  if (has('Cargo.toml')) {
-    add('cargo', ['fmt', '--all', '--check']);
-    add('cargo', ['clippy', '--all-targets', '--', '-D', 'warnings']);
+  if (has('Cargo.toml')) await rust(cwd, files, add);
+  else if (options.nested !== false && has('src-tauri')) {
+    // Tauri app root (frontend package.json + src-tauri crate): include the
+    // Rust backend when checking the app root directly (manual /lint).
+    const sub = join(cwd, 'src-tauri');
+    let subFiles = []; try { subFiles = await readdir(sub); } catch {}
+    if (subFiles.includes('Cargo.toml')) await rust(sub, subFiles, add, ['--manifest-path', join('src-tauri', 'Cargo.toml')]);
   }
   const solution = files.find(f => /\.(sln|slnx)$/.test(f));
   const projects = files.filter(f => /\.(csproj|fsproj|vbproj)$/.test(f));

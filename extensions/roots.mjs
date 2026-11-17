@@ -7,7 +7,9 @@ export async function projectForFile(cwd, file) {
   const target = resolve(cwd, file);
   const rel = relative(cwd, target);
   if (rel.startsWith('..') || isAbsolute(rel) || /(^|[/\\])(node_modules|\.git|vault)([/\\]|$)/.test(rel)) return null;
-  if (!/\.(?:[cm]?[jt]sx?|vue|svelte|go|py|pyi|rs|cs|fs|vb|csproj|fsproj|vbproj|sln|slnx|css|scss|sass|less|json|jsonc|toml|ya?ml)$/.test(target) && !/(?:go\.(mod|sum)|Cargo\.lock)$/.test(target)) return null;
+  if (!/\.(?:[cm]?[jt]sx?|vue|svelte|go|py|pyi|rs|cs|fs|vb|csproj|fsproj|vbproj|sln|slnx|css|scss|sass|less|json|jsonc|json5|toml|ya?ml)$/.test(target) && !/(?:go\.(mod|sum)|Cargo\.lock|rust-toolchain|[/\\]\.cargo[/\\]config)$/.test(target)) return null;
+  // Cargo build output and Tauri generated schemas are not source edits.
+  if (/(^|[/\\])(target|src-tauri[/\\]gen)([/\\]|$)/.test(rel)) return null;
   let dir = dirname(target);
   while (true) {
     let files = []; try { files = await readdir(dir); } catch {}

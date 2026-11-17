@@ -9,7 +9,10 @@ export function registerAutoLint(pi, detect = detectCommands) {
   async function run(ctx, manual = false) {
     if (!enabled || stopped || running) return;
     const roots = [...pending]; pending.clear();
-    if (!roots.length && manual) roots.push(ctx.cwd);
+    // Only a direct /lint of the current directory includes nested Tauri
+    // src-tauri crates; edit batches already track src-tauri as its own root.
+    const nested = !roots.length && manual;
+    if (nested) roots.push(ctx.cwd);
     if (!roots.length) return;
     running = true; abort = new AbortController();
     status(ctx, 'checking…');
@@ -18,7 +21,7 @@ export function registerAutoLint(pi, detect = detectCommands) {
     try {
       for (const cwd of roots) {
         try {
-          const commands = await detect(cwd);
+          const commands = await detect(cwd, { nested });
           if (!commands.length) { results.push(`Not configured: ${cwd}. Add a lint script or install/configure a supported checker.`); continue; }
           for (const item of commands) {
             if (!enabled || stopped) return;
@@ -27,7 +30,7 @@ export function registerAutoLint(pi, detect = detectCommands) {
             if (stopped || !enabled) return;
             const output = (result.stdout + result.stderr).slice(-4000);
             if (failed(result, item)) {
-              failures.push(`${cwd}: ${item.name}\n${output || 'Failed or timed out.'}`);
+              failures.push(`${cwd}: ${item.name}\n${output || 'Failed or timed out.'}${item.hint ? `\nHint: ${item.hint}` : ''}`);
               break;
             }
             results.push(`✓ ${cwd}: ${item.name}`);

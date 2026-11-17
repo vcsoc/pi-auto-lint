@@ -1,6 +1,6 @@
 {
   "name": "@vcsoc/pi-auto-lint",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Automatic batch lint, type and format checks for affected projects.",
   "scripts": { "test": "node --test extensions/test/*.test.mjs" },
   "keywords": ["pi-package"],

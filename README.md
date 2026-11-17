@@ -17,7 +17,11 @@ JS/TS/React/Next: prefer `lint:check`/`lint`, `typecheck`/`type-check`, and `for
 
 Go modules: `gofmt -l .` (output counts as failure), then configured golangci-lint or `go vet ./...`.
 
-Python: Ruff (project .venv preferred), configured Ruff formatting and mypy. Rust: cargo fmt and clippy. .NET: dotnet format for a solution or individual projects, without restore.
+Python: Ruff (project .venv preferred), configured Ruff formatting and mypy. .NET: dotnet format for a solution or individual projects, without restore.
+
+Rust: `cargo fmt --all --check`, then `cargo clippy --all-targets -- -D warnings` (`--workspace` added when Cargo.toml declares `[workspace]`). Edits to `.rs`, `Cargo.toml`/`Cargo.lock`, `rust-toolchain`, `.cargo/config` and rustfmt/clippy TOML are tracked against the nearest crate; `target/` output is ignored.
+
+Tauri (v1/v2): the frontend (root `package.json`) and backend (`src-tauri/Cargo.toml`) are separate roots, so frontend edits run only JS checks and `src-tauri` edits (including `tauri.conf.json(5)`, `Tauri.toml`, capabilities) run only Rust checks. `src-tauri/gen/` is ignored. A manual `/lint` at the app root runs both, using `--manifest-path src-tauri/Cargo.toml`. If the configured `frontendDist` directory is missing, clippy failures include a hint to build the frontend first (`tauri::generate_context!()` requires it).
 
 No automatic lint:fix, generic format script, or tool installation. Project scripts themselves may write files or download dependencies; review them. Go/Rust checks may fetch build dependencies. Missing tools are reported, not installed. Yarn PnP should use project scripts. Framework generated types may require setup beforehand.
 

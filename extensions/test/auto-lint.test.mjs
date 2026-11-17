@@ -45,6 +45,48 @@ test('Python Rust and .NET checks retained', async t => {
   const root = await fixture(t, { 'pyproject.toml': '[tool.mypy]\n[tool.ruff.format]', 'Cargo.toml': '', 'app.csproj': '' });
   assert.deepEqual((await detectCommands(root)).map(c => c.command), ['ruff', 'ruff', 'mypy', 'cargo', 'cargo', 'dotnet']);
 });
+test('Rust workspace checks all members', async t => {
+  const root = await fixture(t, { 'Cargo.toml': '[workspace]\nmembers = ["a"]\n', 'a/Cargo.toml': '[package]\nname = "a"' });
+  assert.deepEqual((await detectCommands(root)).map(c => c.args), [['fmt', '--all', '--check'], ['clippy', '--workspace', '--all-targets', '--', '-D', 'warnings']]);
+  assert.equal(await projectForFile(root, 'a/src/lib.rs'), join(root, 'a'));
+  assert.equal(await projectForFile(root, 'rust-toolchain'), root);
+  assert.equal(await projectForFile(root, 'target/debug/build/x/out.rs'), null);
+});
+test('Tauri app: frontend and src-tauri are separate roots; manual root lint includes backend', async t => {
+  const root = await fixture(t, {
+    'package.json': { scripts: { lint: 'eslint .' } },
+    'src-tauri/Cargo.toml': '[package]\nname = "app"',
+    'src-tauri/tauri.conf.json': { build: { frontendDist: '../dist' } },
+    'src-tauri/src/main.rs': 'fn main() {}',
+  });
+  assert.equal(await projectForFile(root, 'src/App.tsx'), root);
+  assert.equal(await projectForFile(root, 'src-tauri/src/main.rs'), join(root, 'src-tauri'));
+  assert.equal(await projectForFile(root, 'src-tauri/tauri.conf.json'), join(root, 'src-tauri'));
+  assert.equal(await projectForFile(root, 'src-tauri/capabilities/default.json'), join(root, 'src-tauri'));
+  assert.equal(await projectForFile(root, 'src-tauri/gen/schemas/desktop-schema.json'), null);
+  // Automatic frontend batch: no slow cargo checks.
+  assert.deepEqual((await detectCommands(root, { nested: false })).map(c => c.command), ['npm']);
+  const all = await detectCommands(root);
+  assert.deepEqual(all.map(c => c.command), ['npm', 'cargo', 'cargo']);
+  assert.deepEqual(all[2].args.slice(0, 3), ['clippy', '--manifest-path', join('src-tauri', 'Cargo.toml')]);
+  assert.match(all[2].hint, /frontendDist "\.\.\/dist"/);
+  await mkdir(join(root, 'dist'));
+  const backend = await detectCommands(join(root, 'src-tauri'));
+  assert.deepEqual(backend.map(c => c.args[0]), ['fmt', 'clippy']);
+  assert.equal(backend[1].hint, undefined);
+});
+test('Tauri failure includes hint; manual root lint passes nested flag', async t => {
+  const root = await fixture(t, {});
+  const seen = [];
+  const h = harness(root, async (_cwd, options) => { seen.push(options); return [{ name: 'cargo clippy', command: 'cargo', args: ['clippy'], hint: 'build the frontend' }]; });
+  h.pi.exec = async () => ({ code: 101, stdout: '', stderr: 'frontendDist missing' });
+  await h.commands.lint('', h.ctx);
+  assert.deepEqual(seen, [{ nested: true }]);
+  assert.match(h.messages[0][0].content, /Hint: build the frontend/);
+  await h.events.tool_result({ toolName: 'edit', input: { path: 'a.rs' } }, h.ctx);
+  await h.events.agent_before_settle({}, h.ctx);
+  assert.deepEqual(seen[1], { nested: false });
+});
 test('nearest nested package and ignored paths', async t => {
   const root = await fixture(t, { 'package.json': {}, 'packages/ui/package.json': {} });
   assert.equal(await projectForFile(root, 'packages/ui/src/a.tsx'), join(root, 'packages/ui'));
